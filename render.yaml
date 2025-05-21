@@ -1,21 +1,6 @@
-<<<<<<< HEAD
 services:
   - type: web
-    name: my-streamlit-app
+    name: drawing-search-app
     env: python
-    buildCommand: ""
-    startCommand: streamlit run app.py --server.port=$PORT
-    envVars:
-      - key: PORT
-        value: 10000
-=======
-services:
-  - type: web
-    name: my-streamlit-app
-    env: python
-    buildCommand: ""
-    startCommand: streamlit run app.py --server.port=$PORT
-    envVars:
-      - key: PORT
-        value: 10000
->>>>>>> cf5a575e93bfbce91b9b231c96da622ba11e8154
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
