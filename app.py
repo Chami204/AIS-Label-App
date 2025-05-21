@@ -1,15 +1,16 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from docx.shared import Inches
 import barcode
 from barcode.writer import ImageWriter
-import os
-import shutil
 from zipfile import ZipFile
+import io
+import os
+import hashlib
 
 # Set page config
 st.set_page_config(page_title="Packaging Label Generator", layout="centered", page_icon="📦")
+
 
 st.markdown(
     "<h1 style='color:#023E8A;text-align:center;'>📦 Packaging Label Generator</h1>",
@@ -18,7 +19,7 @@ st.markdown(
 
 # Step 1: Table input
 st.subheader("Step 1: Enter Packaging Details")
-num_rows = st.number_input("How many rows do you want to input?", min_value=1, max_value=100, value=1)
+num_rows = st.number_input("How many rows do you want to input?", min_value=1, max_value=1000, value=1)
 
 table_data = {
     "No.": ["" for _ in range(num_rows)],
@@ -38,55 +39,62 @@ po_number = st.text_input("PO Number")
 mfg = st.text_input("Mfg. (e.g. 03-2025)")
 
 if st.button("Generate Packaging Labels"):
-
-    # Validate
+    # Validate inputs
     if edited_df.isnull().values.any() or not customer or not po_number or not mfg:
         st.error("Please fill in all the fields before generating labels.")
     else:
-        # Prepare output directories
-        output_dir = "output"
-        barcode_dir = os.path.join(output_dir, "barcodes")
-        os.makedirs(barcode_dir, exist_ok=True)
+        # Create in-memory zip file
+        zip_buffer = io.BytesIO()
+        
+        with ZipFile(zip_buffer, 'w') as zipf:
+            # Create and add Word document directly to zip
+            doc = Document()
+            
+            for index, row in edited_df.iterrows():
+                generated_part_numbers = set()
+                no = str(row['No.']).strip()
+                part_number = str(row['Part Number']).strip()
+                description = str(row['Description']).strip()
+                qty_pack = str(row['Quantity per pack']).strip()
+                num_packs = str(row['Number of packs']).strip()
 
-        # Create Word document
-        doc = Document()
+                # Add to Word
+                doc.add_paragraph(f"{no}. {customer} {part_number} Pack Label")
+                doc.add_paragraph(f"Part Number: {part_number}")
+                doc.add_paragraph(f"Description: {description}")
+                doc.add_paragraph(f"Quantity: {qty_pack} PCS")
+                doc.add_paragraph(f"PO Number: {po_number}")
+                doc.add_paragraph("Bar Code:")
+                doc.add_paragraph(f"Mfg. {mfg}")
+                doc.add_paragraph(f"Quantity: {num_packs}")
+                doc.add_page_break()
 
-        for index, row in edited_df.iterrows():
-            no = str(row['No.']).strip()
-            part_number = str(row['Part Number']).strip()
-            description = str(row['Description']).strip()
-            qty_pack = str(row['Quantity per pack']).strip()
-            num_packs = str(row['Number of packs']).strip()
+                # Generate barcode directly in memory
+                if part_number:
+                    barcode_filename = f"{no}_{part_number}.png"
 
-            # Add to Word
-            doc.add_paragraph(f"{no}. {customer} {part_number} Pack Label")
-            doc.add_paragraph(f"Part Number: {part_number}")
-            doc.add_paragraph(f"Description: {description}")
-            doc.add_paragraph(f"Quantity: {qty_pack} PCS")
-            doc.add_paragraph(f"PO Number: {po_number}")
-            doc.add_paragraph(f"Bar Code:")
-            doc.add_paragraph(f"Mfg. {mfg}")
-            doc.add_paragraph(f"Quantity: {num_packs}")
-            doc.add_page_break()
+                    # Skip if the filename contains ".2."
+                    if ".2" in barcode_filename:
+                        continue
 
-            # Generate barcode
-            barcode_text = part_number
-            barcode_filename = f"{no}.{customer}.{part_number}.PackLabel".replace(" ", "_")
-            barcode_path = os.path.join(barcode_dir, barcode_filename)
-            code128 = barcode.get("code128", barcode_text, writer=ImageWriter())
-            code128.save(barcode_path)
+                    barcode_buffer = io.BytesIO()
+                    code128 = barcode.get("code128", part_number, writer=ImageWriter())
+                    code128.write(barcode_buffer)
+                    zipf.writestr(f"barcodes/{barcode_filename}", barcode_buffer.getvalue())
 
-        # Save Word doc
-        doc_path = os.path.join(output_dir, "Packaging_Labels.docx")
-        doc.save(doc_path)
 
-        # Create zip file
-        zip_path = os.path.join(output_dir, "Packaging_Labels.zip")
-        with ZipFile(zip_path, 'w') as zipf:
-            zipf.write(doc_path, arcname="Packaging_Labels.docx")
-            for file in os.listdir(barcode_dir):
-                zipf.write(os.path.join(barcode_dir, file), arcname=f"barcodes/{file}")
 
-        with open(zip_path, "rb") as f:
-            st.success("✅ Labels and Barcodes Generated!")
-            st.download_button("📥 Download All Files (ZIP)", f, file_name="Packaging_Labels.zip")
+            # Save Word doc directly to zip
+            doc_buffer = io.BytesIO()
+            doc.save(doc_buffer)
+            zipf.writestr("Packaging_Labels.docx", doc_buffer.getvalue())
+
+        # Prepare download
+        zip_buffer.seek(0)
+        st.success("✅ Labels and Barcodes Generated!")
+        st.download_button(
+            "📥 Download All Files (ZIP)",
+            data=zip_buffer,
+            file_name="Packaging_Labels.zip",
+            mime="application/zip"
+        )
