@@ -10,11 +10,11 @@ import os
 import hashlib
 
 # Set page config
-st.set_page_config(page_title="Packaging Label Generator", layout="centered", page_icon="📦")
+st.set_page_config(page_title="Label & Barcode Generator - AIS", layout="centered", page_icon="📦")
 
 
 st.markdown(
-    "<h1 style='color:#023E8A;text-align:center;'>📦 Packaging Label Generator</h1>",
+    "<h1 style='color:#023E8A;text-align:center;'>📦 Label & Barcode Generator - AIS</h1>",
     unsafe_allow_html=True
 )
 
